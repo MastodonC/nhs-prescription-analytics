@@ -91,19 +91,6 @@ ggplot(practice.indicator, aes(items.alldrugs,pct.statin.atorva))+
 ggplot(practice.indicator, aes(items.alldrugs,pct.statin.rosuva))+
   geom_point()+opts(title="Rosuva funnel")
 
-# Roll up to CCG level
-ccg.rollup<-read.xls("list-of-proposed-practices-ccg.xls",sheet="Practice list")
-spend.ccg.totals<-merge(spend.practice.totals,ccg.rollup,by.x="Practice.code",by.y="Practice.code",all.x=TRUE)
-ccg.totals.headings<- list("Drug"=spend.ccg.totals$Drug,
-                       "Proposed.CCG.name"=spend.ccg.totals$Proposed.CCG.name,
-                       "Interim.CCG.code"=spend.ccg.totals$Interim.CCG.code,
-                       "category"=spend.ccg.totals$category)
-spend.ccg.totals<-
-  aggregate(spend.ccg.totals[,c("cost.thisdrug","items.thisdrug",
-                              "amount.wasted")],
-            by=ccg.totals.headings,
-            FUN=sum)
-
 ## Timeseries plots
 t<-subset(spend.practice,Drug %in% c("Atorvastatin","Rosuvastatin Calcium","Simvastatin"))
 statin.timeseries<-aggregate(t$cost.thisdrug,by=list(t$Month,t$Drug),FUN=sum)
@@ -138,6 +125,22 @@ pct.totals<-pct.totals[,c("PCT.code","total.items.month","pct.problem")]
 pct.totals$pct.problem<-round(pct.totals$pct.problem,3)
 pct.totals$total.items.month<-round(pct.totals$total.items.month,0)
 write.csv(pct.totals,"pct_statin_totals.csv",row.names=FALSE)
+
+# Roll up to CCG level for mapping
+ccg.rollup<-read.xls("list-of-proposed-practices-ccg.xls",sheet="Practice list")
+ccg.totals<-merge(spend.practice.totals,ccg.rollup,by.x="Practice.code",by.y="Practice.code",all.x=TRUE)
+ccg.totals<-subset(ccg.totals,category=="statin")
+ccg.totals$item.bad<-FALSE
+ccg.totals[ccg.totals$Drug %in% c("Atorvastatin","Rosuvastatin Calcium"),]$item.bad<-TRUE
+ccg.totals<-aggregate(ccg.totals$items.thisdrug,by=list(ccg.totals$item.bad,ccg.totals$Interim.CCG.code),FUN=sum)
+ccg.totals<-cast(ccg.totals,Group.2~Group.1)
+names(ccg.totals)<-c("CCG.code","ok.drugs","problem.drugs")
+ccg.totals$ccg.problem<-ccg.totals$problem.drugs/(ccg.totals$problem.drugs+ccg.totals$ok.drugs)
+ccg.totals$total.items.month<-(ccg.totals$ok.drugs+ccg.totals$problem.drugs)/length(file.list)
+ccg.totals<-ccg.totals[,c("CCG.code","total.items.month","ccg.problem")]
+ccg.totals$ccg.problem<-round(ccg.totals$ccg.problem,3)
+ccg.totals$total.items.month<-round(ccg.totals$total.items.month,0)
+write.csv(ccg.totals,"ccg_statin_totals.csv",row.names=FALSE)
 
 ## Savings figures
 median(subset(statin.timeseries,Drug=="Atorvastatin")$Spend)*problem.drugs[problem.drugs$Drug=="Atorvastatin",]$saving
